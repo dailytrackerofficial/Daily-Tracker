@@ -1225,14 +1225,14 @@
       <h3 id="confirm-title">Are you sure?</h3>
       <p id="confirm-msg">This action cannot be undone.</p>
       <div class="row" style="gap:12px;justify-content:center">
-        <button class="btn btn-ghost btn-sm" onclick="closeConfirm()">Cancel</button>
+        <button class="btn btn-ghost btn-sm" id="confirm-cancel-btn">Cancel</button>
         <button class="btn btn-danger btn-sm" id="confirm-ok-btn">Delete</button>
       </div>
     </div>
   </div>
 
   <!-- ==================== MEDIA LIGHTBOX ==================== -->
-  <div id="media-modal" onclick="this.classList.remove('open')">
+  <div id="media-modal" onclick="closeMediaLightbox()">
     <img id="media-modal-img" src="" alt="">
   </div>
 
@@ -1463,7 +1463,7 @@
       <div class="col gap-4">
         <button class="btn btn-ghost btn-sm w-full" onclick="exportData()">📤 Export All Data (JSON)</button>
         <label class="btn btn-ghost btn-sm w-full" style="cursor:pointer">📥 Import Data (JSON)<input type="file"
-            accept=".json" style="display:none" onchange="importData(event)"></label>
+            accept=".json" style="display:none" id="import-file-input"></label>
         <button class="btn btn-danger btn-sm w-full" onclick="resetAllData()">🗑️ Reset All Data</button>
       </div>
     </div>
@@ -1841,7 +1841,7 @@
         <label class="input-label">Image</label>
         <label class="btn btn-ghost w-full" style="cursor:pointer;justify-content:center">
           📷 Choose Image
-          <input type="file" accept="image/*" style="display:none" onchange="handleMediaUpload(event)">
+          <input type="file" accept="image/*" style="display:none" id="media-file-input">
         </label>
         <div id="media-preview" style="margin-top:8px;display:none">
           <img id="media-preview-img"
@@ -1870,8 +1870,7 @@
     'use strict';
 
     /* ==================================================
-       STORAGE ABSTRACTION (kt_ prefix, localStorage now,
-       designed for Firebase migration)
+       STORAGE ABSTRACTION (kt_ prefix, localStorage now)
        ================================================== */
     const Storage = {
       prefix: 'kt_',
@@ -1921,11 +1920,13 @@
        TOAST
        ================================================== */
     function toast(msg, type = 'info') {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
       const el = document.createElement('div');
       el.className = `toast ${type}`;
       const icons = { success: '✅', error: '❌', info: '💡' };
       el.innerHTML = `<span>${icons[type] || '💡'}</span>${msg}`;
-      document.getElementById('toast-container').appendChild(el);
+      container.appendChild(el);
       setTimeout(() => el.remove(), 3000);
     }
 
@@ -1933,14 +1934,18 @@
        CONFIRM DIALOG
        ================================================== */
     let confirmCb = null;
-    function confirm(title, msg, cb) {
+    function confirmDialog(title, msg, cb) {
       document.getElementById('confirm-title').textContent = title;
       document.getElementById('confirm-msg').textContent = msg;
       confirmCb = cb;
       document.getElementById('confirm-overlay').classList.add('open');
     }
-    function closeConfirm() { document.getElementById('confirm-overlay').classList.remove('open'); confirmCb = null; }
+    function closeConfirm() { 
+      document.getElementById('confirm-overlay').classList.remove('open'); 
+      confirmCb = null; 
+    }
     document.getElementById('confirm-ok-btn').onclick = () => { if (confirmCb) confirmCb(); closeConfirm(); };
+    document.getElementById('confirm-cancel-btn').onclick = () => closeConfirm();
 
     /* ==================================================
        MODALS
@@ -1963,7 +1968,8 @@
     function navTo(page) {
       // Hide all pages
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-      document.getElementById('page-' + page).classList.add('active');
+      const targetPage = document.getElementById('page-' + page);
+      if (targetPage) targetPage.classList.add('active');
       currentPage = page;
 
       // Update nav items
@@ -2038,19 +2044,19 @@
       const now = new Date();
       const h = String(now.getHours()).padStart(2, '0');
       const m = String(now.getMinutes()).padStart(2, '0');
-      const s = String(now.getSeconds()).padStart(2, '0');
       const clockEl = document.getElementById('clock');
       if (clockEl) clockEl.textContent = `${h}:${m}`;
     }
     function updateGreeting() {
       const now = new Date();
-      const h = now.getHours();
       const name = Storage.get('profile_name') || 'Friend';
-      let g = h < 12 ? '☀️ Good morning' : h < 17 ? '👋 Good afternoon' : '🌙 Good evening';
-      document.getElementById('greeting').textContent = `${g}, ${name}`;
-      document.getElementById('date-line').textContent =
-        `${dayNames[now.getDay()]}, ${monthNames[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
-      document.getElementById('day-of-year').textContent = `Day ${dayOfYear()} of ${now.getFullYear()}`;
+      let g = now.getHours() < 12 ? '☀️ Good morning' : now.getHours() < 17 ? '👋 Good afternoon' : '🌙 Good evening';
+      const greetingEl = document.getElementById('greeting');
+      if (greetingEl) greetingEl.textContent = `${g}, ${name}`;
+      const dateLineEl = document.getElementById('date-line');
+      if (dateLineEl) dateLineEl.textContent = `${dayNames[now.getDay()]}, ${monthNames[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+      const doyEl = document.getElementById('day-of-year');
+      if (doyEl) doyEl.textContent = `Day ${dayOfYear()} of ${now.getFullYear()}`;
     }
     setInterval(updateClock, 1000);
     updateClock();
@@ -2061,67 +2067,84 @@
     function renderHome() {
       updateGreeting();
 
-      // Focus input persistence
       const focusKey = `focus_${today()}`;
       const fi = document.getElementById('focus-input');
-      fi.value = Storage.get(focusKey, '');
-      fi.oninput = () => Storage.set(focusKey, fi.value);
+      if (fi) {
+        fi.value = Storage.get(focusKey, '');
+        fi.oninput = () => Storage.set(focusKey, fi.value);
+      }
 
-      // Stats
       const goals = Storage.get('goals', []);
-      document.getElementById('stat-goals').textContent = goals.length;
+      const goalsEl = document.getElementById('stat-goals');
+      if (goalsEl) goalsEl.textContent = goals.length;
 
       const habits = Storage.get('habits', []);
       const todayStr = today();
       const done = habits.filter(h => h.log && h.log[todayStr]).length;
       const pct = habits.length ? Math.round(done / habits.length * 100) : 0;
-      document.getElementById('stat-habits').textContent = pct + '%';
+      const habitsEl = document.getElementById('stat-habits');
+      if (habitsEl) habitsEl.textContent = pct + '%';
 
       const bestStreak = habits.reduce((acc, h) => Math.max(acc, h.streak || 0), 0);
-      document.getElementById('stat-streak').textContent = `🔥${bestStreak}`;
+      const streakEl = document.getElementById('stat-streak');
+      if (streakEl) streakEl.textContent = `🔥${bestStreak}`;
 
       const notes = Storage.get('notes', []);
-      document.getElementById('stat-notes').textContent = notes.length;
+      const notesEl = document.getElementById('stat-notes');
+      if (notesEl) notesEl.textContent = notes.length;
 
-      // Today's habits
       const container = document.getElementById('home-habits');
-      document.getElementById('habit-pct-home').textContent = `${done}/${habits.length}`;
-      if (!habits.length) { container.innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>No habits yet</p></div>'; }
-      else {
-        container.innerHTML = habits.map(h => `
-      <div class="card card-sm row-between">
-        <div class="row gap-12">
-          <span style="font-size:1.2rem">${h.icon || '⭐'}</span>
-          <div>
-            <div style="font-size:.88rem;font-weight:500">${h.name}</div>
-            <div class="t-small">${h.streak || 0} day streak</div>
+      const pctHomeEl = document.getElementById('habit-pct-home');
+      if (pctHomeEl) pctHomeEl.textContent = `${done}/${habits.length}`;
+      if (container) {
+        if (!habits.length) { container.innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>No habits yet</p></div>'; }
+        else {
+          container.innerHTML = habits.map(h => `
+          <div class="card card-sm row-between">
+            <div class="row gap-12">
+              <span style="font-size:1.2rem">${h.icon || '⭐'}</span>
+              <div>
+                <div style="font-size:.88rem;font-weight:500">${escapeHtml(h.name)}</div>
+                <div class="t-small">${h.streak || 0} day streak</div>
+              </div>
+            </div>
+            <div class="check-wrap ${h.log && h.log[todayStr] ? 'checked' : ''}" onclick="toggleHabitHome('${h.id}')">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
           </div>
-        </div>
-        <div class="check-wrap ${h.log && h.log[todayStr] ? 'checked' : ''}" onclick="toggleHabitHome('${h.id}')">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-      </div>
-    `).join('');
+        `).join('');
+        }
       }
 
-      // Learning snapshot
       const subjects = Storage.get('subjects', []);
       const sContainer = document.getElementById('home-subjects');
-      if (!subjects.length) { sContainer.innerHTML = '<div class="empty"><div class="empty-icon">📚</div><p>No subjects yet</p></div>'; }
-      else {
-        sContainer.innerHTML = subjects.slice(0, 3).map(s => {
-          const pct = s.total ? Math.round(s.completed / s.total * 100) : 0;
-          return `
-        <div class="card card-sm">
-          <div class="row-between" style="margin-bottom:8px">
-            <div style="font-size:.88rem;font-weight:500">${s.name}</div>
-            <div class="t-small">${s.completed}/${s.total}</div>
-          </div>
-          <div class="progress-bar"><div class="progress-fill green" style="width:${pct}%"></div></div>
-        </div>
-      `;
-        }).join('');
+      if (sContainer) {
+        if (!subjects.length) { sContainer.innerHTML = '<div class="empty"><div class="empty-icon">📚</div><p>No subjects yet</p></div>'; }
+        else {
+          sContainer.innerHTML = subjects.slice(0, 3).map(s => {
+            const pctVal = s.total ? Math.round(s.completed / s.total * 100) : 0;
+            return `
+            <div class="card card-sm">
+              <div class="row-between" style="margin-bottom:8px">
+                <div style="font-size:.88rem;font-weight:500">${escapeHtml(s.name)}</div>
+                <div class="t-small">${s.completed}/${s.total}</div>
+              </div>
+              <div class="progress-bar"><div class="progress-fill green" style="width:${pctVal}%"></div></div>
+            </div>
+          `;
+          }).join('');
+        }
       }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+      });
     }
 
     function toggleHabitHome(id) {
@@ -2130,7 +2153,7 @@
       if (!h) return;
       const todayStr = today();
       if (!h.log) h.log = {};
-      const wasDone = h.log[todayStr];
+      const wasDone = !!h.log[todayStr];
       h.log[todayStr] = !wasDone;
       h.streak = h.log[todayStr] ? (h.streak || 0) + 1 : Math.max(0, (h.streak || 1) - 1);
       Storage.set('habits', habits);
@@ -2149,37 +2172,37 @@
       const filtered = goals.filter(g => g.type === goalTab);
       const container = document.getElementById('goals-list');
 
+      if (!container) return;
       if (!filtered.length) {
         container.innerHTML = `<div class="empty"><div class="empty-icon">🎯</div><p>No ${goalTab} goals yet. Add your first!</p></div>`;
         return;
       }
       container.innerHTML = filtered.map(g => `
-    <div class="card">
-      <div class="row-between" style="margin-bottom:10px">
-        <div class="row gap-12">
-          <span style="font-size:1.2rem">${catEmoji[g.category] || '🌱'}</span>
-          <div>
-            <div class="t-title" style="font-size:.95rem">${g.title}</div>
-            ${g.deadline ? `<div class="t-small">📅 ${g.deadline}</div>` : ''}
+        <div class="card">
+          <div class="row-between" style="margin-bottom:10px">
+            <div class="row gap-12">
+              <span style="font-size:1.2rem">${catEmoji[g.category] || '🌱'}</span>
+              <div>
+                <div class="t-title" style="font-size:.95rem">${escapeHtml(g.title)}</div>
+                ${g.deadline ? `<div class="t-small">📅 ${escapeHtml(g.deadline)}</div>` : ''}
+              </div>
+            </div>
+            <div class="row gap-4">
+              <button class="btn-icon" onclick="editGoal('${g.id}')">✏️</button>
+              <button class="btn-icon" onclick="deleteGoal('${g.id}')">🗑️</button>
+            </div>
           </div>
+          <div class="row-between" style="margin-bottom:6px">
+            <div class="t-small">${g.category}</div>
+            <div class="t-small">${g.progress}%</div>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${g.progress}%"></div></div>
+          ${g.notes ? `<div class="t-small mt-8" style="color:var(--muted)">${escapeHtml(g.notes)}</div>` : ''}
         </div>
-        <div class="row gap-4">
-          <button class="btn-icon" onclick="editGoal('${g.id}')">✏️</button>
-          <button class="btn-icon" onclick="deleteGoal('${g.id}')">🗑️</button>
-        </div>
-      </div>
-      <div class="row-between" style="margin-bottom:6px">
-        <div class="t-small">${g.category}</div>
-        <div class="t-small">${g.progress}%</div>
-      </div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${g.progress}%"></div></div>
-      ${g.notes ? `<div class="t-small mt-8" style="color:var(--muted)">${g.notes}</div>` : ''}
-    </div>
-  `).join('');
+      `).join('');
     }
 
-    // Tab setup for goals
-    document.getElementById('goal-tabs').addEventListener('click', e => {
+    document.getElementById('goal-tabs')?.addEventListener('click', e => {
       const btn = e.target.closest('.tab-btn');
       if (!btn) return;
       goalTab = btn.dataset.tab;
@@ -2203,7 +2226,7 @@
         document.getElementById('g-notes').value = g.notes || '';
       } else {
         document.getElementById('goal-modal-title').textContent = 'New Goal';
-        ['g-title', 'g-deadline', 'g-notes'].forEach(id => document.getElementById(id).value = '');
+        ['g-title', 'g-deadline', 'g-notes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
         document.getElementById('g-progress').value = 0;
         document.getElementById('g-prog-val').textContent = '0%';
         document.getElementById('g-type').value = goalTab;
@@ -2220,7 +2243,7 @@
         id: editId || uid(), title,
         type: document.getElementById('g-type').value,
         category: document.getElementById('g-cat').value,
-        progress: parseInt(document.getElementById('g-progress').value),
+        progress: parseInt(document.getElementById('g-progress').value) || 0,
         deadline: document.getElementById('g-deadline').value,
         notes: document.getElementById('g-notes').value,
         createdAt: editId ? (goals.find(g => g.id === editId) || {}).createdAt : new Date().toISOString()
@@ -2235,7 +2258,7 @@
 
     function editGoal(id) { openGoalModal(id); }
     function deleteGoal(id) {
-      confirm('Delete Goal', 'Are you sure you want to delete this goal?', () => {
+      confirmDialog('Delete Goal', 'Are you sure you want to delete this goal?', () => {
         const goals = Storage.get('goals', []).filter(g => g.id !== id);
         Storage.set('goals', goals);
         toast('Goal deleted', 'info');
@@ -2251,18 +2274,20 @@
       const todayStr = today();
       const done = habits.filter(h => h.log && h.log[todayStr]).length;
       const pct = habits.length ? Math.round(done / habits.length * 100) : 0;
-      document.getElementById('habits-today-pct').textContent = pct + '%';
+      const pctEl = document.getElementById('habits-today-pct');
+      if (pctEl) pctEl.textContent = pct + '%';
       const best = habits.reduce((acc, h) => Math.max(acc, h.streak || 0), 0);
-      document.getElementById('best-streak-disp').textContent = '🔥 ' + best;
+      const bestEl = document.getElementById('best-streak-disp');
+      if (bestEl) bestEl.textContent = '🔥 ' + best;
 
       const container = document.getElementById('habits-list');
+      if (!container) return;
       if (!habits.length) {
         container.innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>No habits yet. Build your first!</p></div>';
         return;
       }
       container.innerHTML = habits.map(h => {
         const isDone = h.log && h.log[todayStr];
-        // Build 7-day dot row
         const dots = [];
         for (let i = 6; i >= 0; i--) {
           const d = new Date(); d.setDate(d.getDate() - i);
@@ -2272,26 +2297,26 @@
           dots.push(`<div class="dot ${done7 ? 'done' : ''} ${isToday ? 'today' : ''}" title="${ds}">${['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()]}</div>`);
         }
         return `
-      <div class="card">
-        <div class="row-between" style="margin-bottom:10px">
-          <div class="row gap-12">
-            <div class="check-wrap ${isDone ? 'checked' : ''}" onclick="toggleHabit('${h.id}')">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="card">
+            <div class="row-between" style="margin-bottom:10px">
+              <div class="row gap-12">
+                <div class="check-wrap ${isDone ? 'checked' : ''}" onclick="toggleHabit('${h.id}')">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+                <span style="font-size:1.3rem">${h.icon || '⭐'}</span>
+                <div>
+                  <div style="font-weight:500">${escapeHtml(h.name)}</div>
+                  <div class="t-small">🔥 ${h.streak || 0} streak · ${h.target || 7}×/week target</div>
+                </div>
+              </div>
+              <div class="row gap-4">
+                <button class="btn-icon" onclick="editHabit('${h.id}')">✏️</button>
+                <button class="btn-icon" onclick="deleteHabit('${h.id}')">🗑️</button>
+              </div>
             </div>
-            <span style="font-size:1.3rem">${h.icon || '⭐'}</span>
-            <div>
-              <div style="font-weight:500">${h.name}</div>
-              <div class="t-small">🔥 ${h.streak || 0} streak · ${h.target || 7}×/week target</div>
-            </div>
+            <div class="dot-row">${dots.join('')}</div>
           </div>
-          <div class="row gap-4">
-            <button class="btn-icon" onclick="editHabit('${h.id}')">✏️</button>
-            <button class="btn-icon" onclick="deleteHabit('${h.id}')">🗑️</button>
-          </div>
-        </div>
-        <div class="dot-row">${dots.join('')}</div>
-      </div>
-    `;
+        `;
       }).join('');
     }
 
@@ -2301,7 +2326,7 @@
       if (!h) return;
       const todayStr = today();
       if (!h.log) h.log = {};
-      const wasDone = h.log[todayStr];
+      const wasDone = !!h.log[todayStr];
       h.log[todayStr] = !wasDone;
       h.streak = h.log[todayStr] ? (h.streak || 0) + 1 : Math.max(0, (h.streak || 1) - 1);
       Storage.set('habits', habits);
@@ -2355,7 +2380,7 @@
 
     function editHabit(id) { openHabitModal(id); }
     function deleteHabit(id) {
-      confirm('Delete Habit', 'This will delete all habit history. Continue?', () => {
+      confirmDialog('Delete Habit', 'This will delete all habit history. Continue?', () => {
         Storage.set('habits', Storage.get('habits', []).filter(h => h.id !== id));
         toast('Habit deleted', 'info');
         renderHabits();
@@ -2368,6 +2393,7 @@
     function renderLearn() {
       const subjects = Storage.get('subjects', []);
       const container = document.getElementById('subjects-list');
+      if (!container) return;
       if (!subjects.length) {
         container.innerHTML = '<div class="empty"><div class="empty-icon">📚</div><p>No subjects yet. Start learning!</p></div>';
         return;
@@ -2376,32 +2402,32 @@
         const pct = s.total ? Math.round(s.completed / s.total * 100) : 0;
         const rem = s.total - s.completed;
         return `
-      <div class="card">
-        <div class="row-between" style="margin-bottom:8px">
-          <div>
-            <div style="font-weight:600">${s.name}</div>
-            ${s.platform ? `<div class="t-small">${s.platform}</div>` : ''}
+          <div class="card">
+            <div class="row-between" style="margin-bottom:8px">
+              <div>
+                <div style="font-weight:600">${escapeHtml(s.name)}</div>
+                ${s.platform ? `<div class="t-small">${escapeHtml(s.platform)}</div>` : ''}
+              </div>
+              <div class="row gap-4">
+                <button class="btn-icon" onclick="editSubject('${s.id}')">✏️</button>
+                <button class="btn-icon" onclick="deleteSubject('${s.id}')">🗑️</button>
+              </div>
+            </div>
+            <div class="row-between" style="margin-bottom:6px">
+              <div class="t-small">${s.completed} / ${s.total} lectures · ${rem} remaining</div>
+              <div class="t-small">${pct}%</div>
+            </div>
+            <div class="progress-bar" style="margin-bottom:10px">
+              <div class="progress-fill green" style="width:${pct}%"></div>
+            </div>
+            <div class="row" style="gap:6px">
+              <button class="btn btn-ghost btn-sm" onclick="adjustLectures('${s.id}',-1)">−1</button>
+              <button class="btn btn-primary btn-sm" onclick="adjustLectures('${s.id}',1)">+1</button>
+              <button class="btn btn-ghost btn-sm" onclick="adjustLectures('${s.id}',5)">+5</button>
+            </div>
+            ${s.notes ? `<div class="t-small mt-8" style="color:var(--muted)">${escapeHtml(s.notes)}</div>` : ''}
           </div>
-          <div class="row gap-4">
-            <button class="btn-icon" onclick="editSubject('${s.id}')">✏️</button>
-            <button class="btn-icon" onclick="deleteSubject('${s.id}')">🗑️</button>
-          </div>
-        </div>
-        <div class="row-between" style="margin-bottom:6px">
-          <div class="t-small">${s.completed} / ${s.total} lectures · ${rem} remaining</div>
-          <div class="t-small">${pct}%</div>
-        </div>
-        <div class="progress-bar" style="margin-bottom:10px">
-          <div class="progress-fill green" style="width:${pct}%"></div>
-        </div>
-        <div class="row" style="gap:6px">
-          <button class="btn btn-ghost btn-sm" onclick="adjustLectures('${s.id}',-1)">−1</button>
-          <button class="btn btn-primary btn-sm" onclick="adjustLectures('${s.id}',1)">+1</button>
-          <button class="btn btn-ghost btn-sm" onclick="adjustLectures('${s.id}',5)">+5</button>
-        </div>
-        ${s.notes ? `<div class="t-small mt-8" style="color:var(--muted)">${s.notes}</div>` : ''}
-      </div>
-    `;
+        `;
       }).join('');
     }
 
@@ -2427,7 +2453,7 @@
         document.getElementById('s-notes').value = s.notes || '';
       } else {
         document.getElementById('subject-modal-title').textContent = 'New Subject';
-        ['s-name', 's-platform', 's-notes'].forEach(i => document.getElementById(i).value = '');
+        ['s-name', 's-platform', 's-notes'].forEach(i => { const el = document.getElementById(i); if (el) el.value = ''; });
         document.getElementById('s-total').value = 0;
         document.getElementById('s-completed').value = 0;
       }
@@ -2456,7 +2482,7 @@
 
     function editSubject(id) { openSubjectModal(id); }
     function deleteSubject(id) {
-      confirm('Delete Subject', 'Delete this subject and all progress?', () => {
+      confirmDialog('Delete Subject', 'Delete this subject and all progress?', () => {
         Storage.set('subjects', Storage.get('subjects', []).filter(s => s.id !== id));
         toast('Subject deleted', 'info');
         renderLearn();
@@ -2466,10 +2492,10 @@
     /* ==================================================
        WEEKLY PLANNER
        ================================================== */
-    let weekDay = dayNames[new Date().getDay()] === 'Sun' ? 'Sun' : dayNames[new Date().getDay()];
-    // Fix: use Mon-Sun labels
-    const weekDayMap = { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' };
-    weekDay = weekDayMap[new Date().getDay()];
+    let weekDay = (() => {
+      const map = { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' };
+      return map[new Date().getDay()];
+    })();
 
     function renderWeekly() {
       const tasks = Storage.get('tasks', []).filter(t => t.day === weekDay);
@@ -2478,31 +2504,31 @@
         return pOrder[a.priority] - pOrder[b.priority];
       });
       const container = document.getElementById('weekly-tasks');
+      if (!container) return;
       if (!tasks.length) {
         container.innerHTML = '<div class="empty"><div class="empty-icon">📅</div><p>No tasks for this day</p></div>';
         return;
       }
       container.innerHTML = tasks.map(t => `
-    <div class="card card-sm row-between" style="opacity:${t.done ? '.6' : '1'}">
-      <div class="row gap-12">
-        <div class="check-wrap ${t.done ? 'checked' : ''}" onclick="toggleTask('${t.id}')">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="card card-sm row-between" style="opacity:${t.done ? '.6' : '1'}">
+          <div class="row gap-12">
+            <div class="check-wrap ${t.done ? 'checked' : ''}" onclick="toggleTask('${t.id}')">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div>
+              <div style="font-weight:500;text-decoration:${t.done ? 'line-through' : 'none'}">${escapeHtml(t.title)}</div>
+              ${t.time ? `<div class="t-small">${fmt12(t.time)}</div>` : ''}
+            </div>
+          </div>
+          <div class="row gap-4">
+            <span class="priority-${t.priority}">${t.priority}</span>
+            <button class="btn-icon" onclick="deleteTask('${t.id}')">🗑️</button>
+          </div>
         </div>
-        <div>
-          <div style="font-weight:500;text-decoration:${t.done ? 'line-through' : 'none'}">${t.title}</div>
-          ${t.time ? `<div class="t-small">${fmt12(t.time)}</div>` : ''}
-        </div>
-      </div>
-      <div class="row gap-4">
-        <span class="priority-${t.priority}">${t.priority}</span>
-        <button class="btn-icon" onclick="deleteTask('${t.id}')">🗑️</button>
-      </div>
-    </div>
-  `).join('');
+      `).join('');
     }
 
-    // Week tabs
-    document.getElementById('week-tabs').addEventListener('click', e => {
+    document.getElementById('week-tabs')?.addEventListener('click', e => {
       const btn = e.target.closest('.tab-btn');
       if (!btn) return;
       weekDay = btn.dataset.day;
@@ -2544,7 +2570,7 @@
     }
 
     function deleteTask(id) {
-      confirm('Delete Task', 'Remove this task?', () => {
+      confirmDialog('Delete Task', 'Remove this task?', () => {
         Storage.set('tasks', Storage.get('tasks', []).filter(t => t.id !== id));
         toast('Task removed', 'info');
         renderWeekly();
@@ -2560,28 +2586,27 @@
       const now = new Date();
       const nowMin = now.getHours() * 60 + now.getMinutes();
       const container = document.getElementById('schedule-list');
-
+      if (!container) return;
       if (!blocks.length) {
         container.innerHTML = '<div class="empty"><div class="empty-icon">🕐</div><p>No schedule blocks yet</p></div>';
         return;
       }
-
       container.innerHTML = blocks.map(b => {
         const [bh, bm] = b.time.split(':').map(Number);
         const startMin = bh * 60 + bm;
         const endMin = startMin + (b.duration || 60);
         const isCurrent = nowMin >= startMin && nowMin < endMin;
         return `
-      <div class="schedule-block ${isCurrent ? 'current' : ''}">
-        <div class="schedule-time">${fmt12(b.time)}</div>
-        <div class="schedule-pill"></div>
-        <div class="schedule-content" style="flex:1">
-          <div class="t-title" style="font-size:.9rem">${b.desc}</div>
-          <div class="t-small">${b.duration || 60} min ${isCurrent ? '· <span style="color:var(--accent3)">Now</span>' : ''}</div>
-        </div>
-        <button class="btn-icon" onclick="deleteScheduleBlock('${b.id}')">🗑️</button>
-      </div>
-    `;
+          <div class="schedule-block ${isCurrent ? 'current' : ''}">
+            <div class="schedule-time">${fmt12(b.time)}</div>
+            <div class="schedule-pill"></div>
+            <div class="schedule-content" style="flex:1">
+              <div class="t-title" style="font-size:.9rem">${escapeHtml(b.desc)}</div>
+              <div class="t-small">${b.duration || 60} min ${isCurrent ? '· <span style="color:var(--accent3)">Now</span>' : ''}</div>
+            </div>
+            <button class="btn-icon" onclick="deleteScheduleBlock('${b.id}')">🗑️</button>
+          </div>
+        `;
       }).join('');
     }
 
@@ -2606,7 +2631,7 @@
     }
 
     function deleteScheduleBlock(id) {
-      confirm('Delete Block', 'Remove this schedule block?', () => {
+      confirmDialog('Delete Block', 'Remove this schedule block?', () => {
         Storage.set('schedule', Storage.get('schedule', []).filter(b => b.id !== id));
         toast('Block removed', 'info');
         renderSchedule();
@@ -2619,22 +2644,23 @@
     function renderNotes() {
       const notes = Storage.get('notes', []);
       const container = document.getElementById('notes-list');
+      if (!container) return;
       if (!notes.length) {
         container.innerHTML = '<div class="empty"><div class="empty-icon">🗒️</div><p>No notes yet. Capture a thought!</p></div>';
         return;
       }
       container.innerHTML = notes.map(n => `
-    <div class="sticky" style="color:${n.color}">
-      <div class="row-between" style="margin-bottom:6px">
-        <div style="font-weight:600;color:var(--text)">${n.title}</div>
-        <div class="row gap-4">
-          <button class="btn-icon" onclick="editNote('${n.id}')">✏️</button>
-          <button class="btn-icon" onclick="deleteNote('${n.id}')">🗑️</button>
+        <div class="sticky" style="color:${n.color}">
+          <div class="row-between" style="margin-bottom:6px">
+            <div style="font-weight:600;color:var(--text)">${escapeHtml(n.title)}</div>
+            <div class="row gap-4">
+              <button class="btn-icon" onclick="editNote('${n.id}')">✏️</button>
+              <button class="btn-icon" onclick="deleteNote('${n.id}')">🗑️</button>
+            </div>
+          </div>
+          <div style="font-size:.85rem;color:var(--muted);line-height:1.6">${escapeHtml(n.content)}</div>
         </div>
-      </div>
-      <div style="font-size:.85rem;color:var(--muted);line-height:1.6">${n.content}</div>
-    </div>
-  `).join('');
+      `).join('');
     }
 
     function openNoteModal(id = null) {
@@ -2672,7 +2698,7 @@
 
     function editNote(id) { openNoteModal(id); }
     function deleteNote(id) {
-      confirm('Delete Note', 'Delete this note?', () => {
+      confirmDialog('Delete Note', 'Delete this note?', () => {
         Storage.set('notes', Storage.get('notes', []).filter(n => n.id !== id));
         toast('Note deleted', 'info');
         renderNotes();
@@ -2683,7 +2709,7 @@
        MOTIVATION VAULT
        ================================================== */
     let motivTab = 'all';
-    document.getElementById('motivation-tabs').addEventListener('click', e => {
+    document.getElementById('motivation-tabs')?.addEventListener('click', e => {
       const btn = e.target.closest('.tab-btn');
       if (!btn) return;
       motivTab = btn.dataset.mtype;
@@ -2697,30 +2723,30 @@
       let items = Storage.get('motivation', []);
       if (motivTab !== 'all') items = items.filter(m => m.type === motivTab);
       const container = document.getElementById('motivation-list');
+      if (!container) return;
       if (!items.length) {
         container.innerHTML = '<div class="empty"><div class="empty-icon">🔥</div><p>Add your first inspiration!</p></div>';
         return;
       }
       container.innerHTML = items.map(m => `
-    <div class="card">
-      <div class="row-between" style="margin-bottom:8px">
-        <span class="badge badge-accent">${motivIcons[m.type] || '💡'} ${m.type}</span>
-        <div class="row gap-4">
-          <button class="btn-icon" onclick="deleteMotivation('${m.id}')">🗑️</button>
+        <div class="card">
+          <div class="row-between" style="margin-bottom:8px">
+            <span class="badge badge-accent">${motivIcons[m.type] || '💡'} ${m.type}</span>
+            <div class="row gap-4">
+              <button class="btn-icon" onclick="deleteMotivation('${m.id}')">🗑️</button>
+            </div>
+          </div>
+          <div style="font-size:.92rem;line-height:1.7;color:var(--text)">${escapeHtml(m.content)}</div>
+          ${m.author ? `<div class="t-small mt-8">— ${escapeHtml(m.author)}</div>` : ''}
         </div>
-      </div>
-      <div style="font-size:.92rem;line-height:1.7;color:var(--text)">${m.content}</div>
-      ${m.author ? `<div class="t-small mt-8">— ${m.author}</div>` : ''}
-    </div>
-  `).join('');
+      `).join('');
     }
 
     function saveMotivation() {
       const content = document.getElementById('m-content').value.trim();
       if (!content) { toast('Please enter some content', 'error'); return; }
       const items = Storage.get('motivation', []);
-      const editId = document.getElementById('motiv-edit-id').value;
-      const payload = { id: editId || uid(), type: document.getElementById('m-type').value, content, author: document.getElementById('m-author').value };
+      const payload = { id: uid(), type: document.getElementById('m-type').value, content, author: document.getElementById('m-author').value };
       items.unshift(payload);
       Storage.set('motivation', items);
       closeModal('motivation-modal');
@@ -2731,7 +2757,7 @@
     }
 
     function deleteMotivation(id) {
-      confirm('Delete', 'Remove this from vault?', () => {
+      confirmDialog('Delete', 'Remove this from vault?', () => {
         Storage.set('motivation', Storage.get('motivation', []).filter(m => m.id !== id));
         toast('Removed', 'info');
         renderMotivation();
@@ -2745,23 +2771,24 @@
       const items = Storage.get('revisions', []);
       items.sort((a, b) => b.date.localeCompare(a.date));
       const container = document.getElementById('revision-list');
+      if (!container) return;
       if (!items.length) {
         container.innerHTML = '<div class="empty"><div class="empty-icon">📝</div><p>No revision logs yet</p></div>';
         return;
       }
       container.innerHTML = items.map(r => `
-    <div class="card">
-      <div class="row-between" style="margin-bottom:10px">
-        <div style="font-weight:600">${r.date}</div>
-        <div class="row gap-4">
-          <button class="btn-icon" onclick="deleteRevision('${r.id}')">🗑️</button>
+        <div class="card">
+          <div class="row-between" style="margin-bottom:10px">
+            <div style="font-weight:600">${r.date}</div>
+            <div class="row gap-4">
+              <button class="btn-icon" onclick="deleteRevision('${r.id}')">🗑️</button>
+            </div>
+          </div>
+          ${r.learned ? `<div class="t-micro" style="margin-bottom:4px">LEARNED</div><div style="font-size:.85rem;margin-bottom:10px;line-height:1.6">${escapeHtml(r.learned)}</div>` : ''}
+          ${r.mistakes ? `<div class="t-micro" style="margin-bottom:4px">MISTAKES</div><div style="font-size:.85rem;margin-bottom:10px;line-height:1.6;color:var(--danger)">${escapeHtml(r.mistakes)}</div>` : ''}
+          ${r.tomorrow ? `<div class="t-micro" style="margin-bottom:4px">TOMORROW</div><div style="font-size:.85rem;line-height:1.6;color:var(--accent3)">${escapeHtml(r.tomorrow)}</div>` : ''}
         </div>
-      </div>
-      ${r.learned ? `<div class="t-micro" style="margin-bottom:4px">LEARNED</div><div style="font-size:.85rem;margin-bottom:10px;line-height:1.6">${r.learned}</div>` : ''}
-      ${r.mistakes ? `<div class="t-micro" style="margin-bottom:4px">MISTAKES</div><div style="font-size:.85rem;margin-bottom:10px;line-height:1.6;color:var(--danger)">${r.mistakes}</div>` : ''}
-      ${r.tomorrow ? `<div class="t-micro" style="margin-bottom:4px">TOMORROW</div><div style="font-size:.85rem;line-height:1.6;color:var(--accent3)">${r.tomorrow}</div>` : ''}
-    </div>
-  `).join('');
+      `).join('');
     }
 
     function openRevisionModal() {
@@ -2775,11 +2802,11 @@
 
     function saveRevision() {
       const date = document.getElementById('rv-date').value;
-      const learned = document.getElementById('rv-learned').value.trim();
       if (!date) { toast('Please set a date', 'error'); return; }
       const revisions = Storage.get('revisions', []);
       revisions.unshift({
-        id: uid(), date, learned,
+        id: uid(), date,
+        learned: document.getElementById('rv-learned').value.trim(),
         mistakes: document.getElementById('rv-mistakes').value.trim(),
         tomorrow: document.getElementById('rv-tomorrow').value.trim()
       });
@@ -2790,7 +2817,7 @@
     }
 
     function deleteRevision(id) {
-      confirm('Delete Revision', 'Remove this log entry?', () => {
+      confirmDialog('Delete Revision', 'Remove this log entry?', () => {
         Storage.set('revisions', Storage.get('revisions', []).filter(r => r.id !== id));
         toast('Deleted', 'info');
         renderRevision();
@@ -2801,34 +2828,38 @@
        JOURNAL
        ================================================== */
     let selectedMood = '😊';
-    document.getElementById('j-mood-row').addEventListener('click', e => {
-      const btn = e.target.closest('.mood-btn');
-      if (!btn) return;
-      document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('selected'));
-      btn.classList.add('selected');
-      selectedMood = btn.dataset.mood;
-    });
+    const moodRow = document.getElementById('j-mood-row');
+    if (moodRow) {
+      moodRow.addEventListener('click', e => {
+        const btn = e.target.closest('.mood-btn');
+        if (!btn) return;
+        document.querySelectorAll('#j-mood-row .mood-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        selectedMood = btn.dataset.mood;
+      });
+    }
 
     function renderJournal() {
       const entries = Storage.get('journal', []);
       entries.sort((a, b) => b.date.localeCompare(a.date));
       const container = document.getElementById('journal-list');
+      if (!container) return;
       if (!entries.length) {
         container.innerHTML = '<div class="empty"><div class="empty-icon">📔</div><p>No journal entries yet</p></div>';
         return;
       }
       container.innerHTML = entries.map(j => `
-    <div class="card">
-      <div class="row-between" style="margin-bottom:8px">
-        <div class="row gap-8">
-          <span style="font-size:1.3rem">${j.mood}</span>
-          <div style="font-weight:600">${j.date}</div>
+        <div class="card">
+          <div class="row-between" style="margin-bottom:8px">
+            <div class="row gap-8">
+              <span style="font-size:1.3rem">${j.mood}</span>
+              <div style="font-weight:600">${j.date}</div>
+            </div>
+            <button class="btn-icon" onclick="deleteJournal('${j.id}')">🗑️</button>
+          </div>
+          <div style="font-size:.88rem;line-height:1.7;color:var(--muted)">${escapeHtml(j.entry)}</div>
         </div>
-        <button class="btn-icon" onclick="deleteJournal('${j.id}')">🗑️</button>
-      </div>
-      <div style="font-size:.88rem;line-height:1.7;color:var(--muted)">${j.entry}</div>
-    </div>
-  `).join('');
+      `).join('');
     }
 
     function openJournalModal() {
@@ -2836,8 +2867,9 @@
       document.getElementById('j-date').value = today();
       document.getElementById('j-entry').value = '';
       selectedMood = '😊';
-      document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('selected'));
-      document.querySelector('[data-mood="😊"]').classList.add('selected');
+      document.querySelectorAll('#j-mood-row .mood-btn').forEach(b => b.classList.remove('selected'));
+      const defaultMoodBtn = document.querySelector('#j-mood-row .mood-btn[data-mood="😊"]');
+      if (defaultMoodBtn) defaultMoodBtn.classList.add('selected');
       openModal('journal-modal');
     }
 
@@ -2854,7 +2886,7 @@
     }
 
     function deleteJournal(id) {
-      confirm('Delete Entry', 'Remove this journal entry?', () => {
+      confirmDialog('Delete Entry', 'Remove this journal entry?', () => {
         Storage.set('journal', Storage.get('journal', []).filter(j => j.id !== id));
         toast('Entry deleted', 'info');
         renderJournal();
@@ -2868,7 +2900,7 @@
     const visionColors = { '2026': 'var(--accent)', '2027': 'var(--accent2)', 'longterm': 'var(--accent3)' };
     const visionLabels = { '2026': '🌱 2026: Learning Year', '2027': '💰 2027: Earning Year', 'longterm': '🌟 Long-term Vision' };
 
-    document.getElementById('vision-tabs').addEventListener('click', e => {
+    document.getElementById('vision-tabs')?.addEventListener('click', e => {
       const btn = e.target.closest('.tab-btn');
       if (!btn) return;
       visionYear = btn.dataset.vy;
@@ -2880,20 +2912,21 @@
     function renderVision() {
       const items = Storage.get('visions', []).filter(v => v.year === visionYear);
       const container = document.getElementById('vision-list');
+      if (!container) return;
       const color = visionColors[visionYear];
       if (!items.length) {
         container.innerHTML = `<div class="empty"><div class="empty-icon">🌟</div><p>Add your ${visionYear} visions!</p></div>`;
         return;
       }
       container.innerHTML = items.map(v => `
-    <div class="vision-card" style="border-left:3px solid ${color}">
-      <div class="row-between" style="margin-bottom:8px">
-        <span class="t-micro">${visionLabels[v.year]}</span>
-        <button class="btn-icon" onclick="deleteVision('${v.id}')">🗑️</button>
-      </div>
-      <div style="font-size:.9rem;line-height:1.7">${v.text}</div>
-    </div>
-  `).join('');
+        <div class="vision-card" style="border-left:3px solid ${color}">
+          <div class="row-between" style="margin-bottom:8px">
+            <span class="t-micro">${visionLabels[v.year]}</span>
+            <button class="btn-icon" onclick="deleteVision('${v.id}')">🗑️</button>
+          </div>
+          <div style="font-size:.9rem;line-height:1.7">${escapeHtml(v.text)}</div>
+        </div>
+      `).join('');
     }
 
     function saveVision() {
@@ -2909,7 +2942,7 @@
     }
 
     function deleteVision(id) {
-      confirm('Delete Vision', 'Remove this vision?', () => {
+      confirmDialog('Delete Vision', 'Remove this vision?', () => {
         Storage.set('visions', Storage.get('visions', []).filter(v => v.id !== id));
         toast('Removed', 'info');
         renderVision();
@@ -2922,7 +2955,7 @@
     let mediaCat = 'all';
     let mediaBase64 = null;
 
-    document.getElementById('media-tabs').addEventListener('click', e => {
+    document.getElementById('media-tabs')?.addEventListener('click', e => {
       const btn = e.target.closest('.tab-btn');
       if (!btn) return;
       mediaCat = btn.dataset.mcat;
@@ -2931,27 +2964,31 @@
       renderMedia();
     });
 
-    function handleMediaUpload(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = ev => {
-        // Compress using canvas
-        const img = new Image();
-        img.onload = () => {
-          const maxW = 800;
-          const scale = Math.min(1, maxW / img.width);
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width * scale;
-          canvas.height = img.height * scale;
-          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-          mediaBase64 = canvas.toDataURL('image/jpeg', 0.8);
-          document.getElementById('media-preview-img').src = mediaBase64;
-          document.getElementById('media-preview').style.display = 'block';
+    const mediaFileInput = document.getElementById('media-file-input');
+    if (mediaFileInput) {
+      mediaFileInput.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          const img = new Image();
+          img.onload = () => {
+            const maxW = 800;
+            const scale = Math.min(1, maxW / img.width);
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            mediaBase64 = canvas.toDataURL('image/jpeg', 0.8);
+            const previewImg = document.getElementById('media-preview-img');
+            if (previewImg) previewImg.src = mediaBase64;
+            const previewDiv = document.getElementById('media-preview');
+            if (previewDiv) previewDiv.style.display = 'block';
+          };
+          img.src = ev.target.result;
         };
-        img.src = ev.target.result;
-      };
-      reader.readAsDataURL(file);
+        reader.readAsDataURL(file);
+      });
     }
 
     function saveMedia() {
@@ -2965,7 +3002,10 @@
       });
       Storage.set('media', items);
       mediaBase64 = null;
-      document.getElementById('media-preview').style.display = 'none';
+      const previewDiv = document.getElementById('media-preview');
+      if (previewDiv) previewDiv.style.display = 'none';
+      if (mediaFileInput) mediaFileInput.value = '';
+      document.getElementById('media-name').value = '';
       closeModal('media-modal-sheet');
       toast('Media saved!', 'success');
       renderMedia();
@@ -2975,6 +3015,7 @@
       let items = Storage.get('media', []);
       if (mediaCat !== 'all') items = items.filter(m => m.category === mediaCat);
       const container = document.getElementById('media-grid');
+      if (!container) return;
       if (!items.length) {
         container.style.display = 'block';
         container.innerHTML = '<div class="empty"><div class="empty-icon">🖼️</div><p>No media yet</p></div>';
@@ -2982,18 +3023,23 @@
       }
       container.style.display = 'grid';
       container.innerHTML = items.map(m => `
-    <div class="media-thumb" onclick="openMediaLightbox('${m.id}')">
-      <img src="${m.src}" alt="${m.name}" loading="lazy">
-      <div class="media-thumb-label">${m.name}</div>
-    </div>
-  `).join('');
+        <div class="media-thumb" onclick="openMediaLightbox('${m.id}')">
+          <img src="${m.src}" alt="${escapeHtml(m.name)}" loading="lazy">
+          <div class="media-thumb-label">${escapeHtml(m.name)}</div>
+        </div>
+      `).join('');
     }
 
     function openMediaLightbox(id) {
       const m = Storage.get('media', []).find(x => x.id === id);
       if (!m) return;
-      document.getElementById('media-modal-img').src = m.src;
+      const modalImg = document.getElementById('media-modal-img');
+      if (modalImg) modalImg.src = m.src;
       document.getElementById('media-modal').classList.add('open');
+    }
+
+    function closeMediaLightbox() {
+      document.getElementById('media-modal').classList.remove('open');
     }
 
     /* ==================================================
@@ -3002,7 +3048,7 @@
     let resType = 'all';
     const resIcons = { course: '🎓', book: '📖', tool: '🛠️', link: '🔗' };
 
-    document.getElementById('resource-tabs').addEventListener('click', e => {
+    document.getElementById('resource-tabs')?.addEventListener('click', e => {
       const btn = e.target.closest('.tab-btn');
       if (!btn) return;
       resType = btn.dataset.rtype;
@@ -3015,21 +3061,22 @@
       let items = Storage.get('resources', []);
       if (resType !== 'all') items = items.filter(r => r.type === resType);
       const container = document.getElementById('resource-list');
+      if (!container) return;
       if (!items.length) {
         container.innerHTML = '<div class="empty"><div class="empty-icon">🔗</div><p>No resources yet</p></div>';
         return;
       }
       container.innerHTML = items.map(r => `
-    <div class="resource-item">
-      <div class="resource-icon">${resIcons[r.type] || '🔗'}</div>
-      <div style="flex:1">
-        <div style="font-weight:500">${r.url ? `<a href="${r.url}" target="_blank" style="color:var(--accent)">${r.title}</a>` : r.title}</div>
-        <span class="badge badge-accent" style="margin:4px 0;display:inline-flex">${r.type}</span>
-        ${r.notes ? `<div class="t-small">${r.notes}</div>` : ''}
-      </div>
-      <button class="btn-icon" onclick="deleteResource('${r.id}')">🗑️</button>
-    </div>
-  `).join('');
+        <div class="resource-item">
+          <div class="resource-icon">${resIcons[r.type] || '🔗'}</div>
+          <div style="flex:1">
+            <div style="font-weight:500">${r.url ? `<a href="${r.url}" target="_blank" style="color:var(--accent)">${escapeHtml(r.title)}</a>` : escapeHtml(r.title)}</div>
+            <span class="badge badge-accent" style="margin:4px 0;display:inline-flex">${r.type}</span>
+            ${r.notes ? `<div class="t-small">${escapeHtml(r.notes)}</div>` : ''}
+          </div>
+          <button class="btn-icon" onclick="deleteResource('${r.id}')">🗑️</button>
+        </div>
+      `).join('');
     }
 
     function saveResource() {
@@ -3045,13 +3092,15 @@
       });
       Storage.set('resources', resources);
       closeModal('resource-modal');
-      ['r-title', 'r-url', 'r-notes'].forEach(i => document.getElementById(i).value = '');
+      document.getElementById('r-title').value = '';
+      document.getElementById('r-url').value = '';
+      document.getElementById('r-notes').value = '';
       toast('Resource saved!', 'success');
       renderResources();
     }
 
     function deleteResource(id) {
-      confirm('Delete Resource', 'Remove this resource?', () => {
+      confirmDialog('Delete Resource', 'Remove this resource?', () => {
         Storage.set('resources', Storage.get('resources', []).filter(r => r.id !== id));
         toast('Deleted', 'info');
         renderResources();
@@ -3062,68 +3111,73 @@
        ANALYTICS
        ================================================== */
     function renderAnalytics() {
-      // Habit chart (7-day)
       const habits = Storage.get('habits', []);
       const chartContainer = document.getElementById('analytics-habits-chart');
       const labelsContainer = document.getElementById('analytics-habits-labels');
-      chartContainer.innerHTML = '';
-      labelsContainer.innerHTML = '';
+      if (chartContainer) chartContainer.innerHTML = '';
+      if (labelsContainer) labelsContainer.innerHTML = '';
 
       for (let i = 6; i >= 0; i--) {
         const d = new Date(); d.setDate(d.getDate() - i);
         const ds = d.toISOString().slice(0, 10);
         const done = habits.filter(h => h.log && h.log[ds]).length;
         const pct = habits.length ? (done / habits.length * 100) : 0;
-        const col = document.createElement('div');
-        col.className = 'bar-col';
-        col.innerHTML = `<div class="bar" style="height:${Math.max(pct * .8, 3)}px"></div>`;
-        chartContainer.appendChild(col);
-        const lbl = document.createElement('span');
-        lbl.className = 'bar-label';
-        lbl.textContent = ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()];
-        labelsContainer.appendChild(lbl);
+        if (chartContainer) {
+          const col = document.createElement('div');
+          col.className = 'bar-col';
+          col.innerHTML = `<div class="bar" style="height:${Math.max(pct * 0.8, 3)}px"></div>`;
+          chartContainer.appendChild(col);
+        }
+        if (labelsContainer) {
+          const lbl = document.createElement('span');
+          lbl.className = 'bar-label';
+          lbl.textContent = ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()];
+          labelsContainer.appendChild(lbl);
+        }
       }
 
-      // Learning progress
       const subjects = Storage.get('subjects', []);
       const learnContainer = document.getElementById('analytics-learn');
-      learnContainer.innerHTML = subjects.map(s => {
-        const pct = s.total ? Math.round(s.completed / s.total * 100) : 0;
-        return `
-      <div>
-        <div class="row-between" style="margin-bottom:4px">
-          <div style="font-size:.85rem;font-weight:500">${s.name}</div>
-          <div class="t-small">${pct}%</div>
-        </div>
-        <div class="progress-bar"><div class="progress-fill green" style="width:${pct}%"></div></div>
-      </div>
-    `;
-      }).join('') || '<div class="t-small">No subjects tracked yet</div>';
+      if (learnContainer) {
+        learnContainer.innerHTML = subjects.map(s => {
+          const pct = s.total ? Math.round(s.completed / s.total * 100) : 0;
+          return `
+            <div>
+              <div class="row-between" style="margin-bottom:4px">
+                <div style="font-size:.85rem;font-weight:500">${escapeHtml(s.name)}</div>
+                <div class="t-small">${pct}%</div>
+              </div>
+              <div class="progress-bar"><div class="progress-fill green" style="width:${pct}%"></div></div>
+            </div>
+          `;
+        }).join('') || '<div class="t-small">No subjects tracked yet</div>';
+      }
 
-      // Goal completion
       const goals = Storage.get('goals', []);
       const goalsContainer = document.getElementById('analytics-goals');
-      const completed = goals.filter(g => g.progress === 100).length;
-      goalsContainer.innerHTML = `
-    <div class="row-between">
-      <div class="t-small">Total Goals</div>
-      <div style="font-weight:600">${goals.length}</div>
-    </div>
-    <div class="row-between">
-      <div class="t-small">Completed (100%)</div>
-      <div style="font-weight:600;color:var(--accent3)">${completed}</div>
-    </div>
-    <div class="row-between">
-      <div class="t-small">In Progress</div>
-      <div style="font-weight:600;color:var(--accent)">${goals.filter(g => g.progress > 0 && g.progress < 100).length}</div>
-    </div>
-    ${goals.length ? `
-      <div class="progress-bar" style="margin-top:8px">
-        <div class="progress-fill" style="width:${Math.round(completed / goals.length * 100)}%"></div>
-      </div>
-      <div class="t-small" style="margin-top:4px">${Math.round(completed / goals.length * 100)}% completion rate</div>
-    ` : ''}
-  `;
+      if (goalsContainer) {
+        const completed = goals.filter(g => g.progress === 100).length;
+        goalsContainer.innerHTML = `
+          <div class="row-between">
+            <div class="t-small">Total Goals</div>
+            <div style="font-weight:600">${goals.length}</div>
+          </div>
+          <div class="row-between">
+            <div class="t-small">Completed (100%)</div>
+            <div style="font-weight:600;color:var(--accent3)">${completed}</div>
+          </div>
+          <div class="row-between">
+            <div class="t-small">In Progress</div>
+            <div style="font-weight:600;color:var(--accent)">${goals.filter(g => g.progress > 0 && g.progress < 100).length}</div>
+          </div>
+          ${goals.length ? `
+            <div class="progress-bar" style="margin-top:8px">
+              <div class="progress-fill" style="width:${Math.round(completed / goals.length * 100)}%"></div>
+            </div>
+            <div class="t-small" style="margin-top:4px">${Math.round(completed / goals.length * 100)}% completion rate</div>
+          ` : ''}
+        `;
+      }
     }
 
     /* ==================================================
@@ -3132,8 +3186,10 @@
     function renderSettings() {
       const name = Storage.get('profile_name', '');
       const mission = Storage.get('profile_mission', '');
-      document.getElementById('settings-name').value = name;
-      document.getElementById('settings-mission').value = mission;
+      const nameEl = document.getElementById('settings-name');
+      const missionEl = document.getElementById('settings-mission');
+      if (nameEl) nameEl.value = name;
+      if (missionEl) missionEl.value = mission;
     }
 
     function saveProfile() {
@@ -3171,13 +3227,28 @@
     }
 
     function resetAllData() {
-      confirm('Reset All Data', 'This will permanently delete all your data. Are you absolutely sure?', () => {
+      confirmDialog('Reset All Data', 'This will permanently delete all your data. Are you absolutely sure?', () => {
         const keys = Object.keys(localStorage).filter(k => k.startsWith(Storage.prefix));
         keys.forEach(k => localStorage.removeItem(k));
         toast('All data reset', 'info');
         seedDefaultData();
         renderPage(currentPage);
       });
+    }
+
+    function seedDefaultData() {
+      // Example default data - only if empty
+      if (Storage.get('habits', []).length === 0) {
+        Storage.set('habits', [
+          { id: uid(), name: 'Morning Meditation', icon: '🧘', color: '#c5b4ff', target: 7, streak: 0, log: {} },
+          { id: uid(), name: 'Read 30 mins', icon: '📖', color: '#6ee7b7', target: 5, streak: 0, log: {} }
+        ]);
+      }
+      if (Storage.get('subjects', []).length === 0) {
+        Storage.set('subjects', [
+          { id: uid(), name: 'JavaScript Mastery', total: 20, completed: 5, platform: 'Udemy', notes: '' }
+        ]);
+      }
     }
 
     /* ==================================================
@@ -3210,17 +3281,14 @@
     });
 
     /* ==================================================
-       PWA PLACEHOLDER
-       ================================================== */
-    if ('serviceWorker' in navigator) {
-      // Service worker registration placeholder for PWA readiness
-      // Uncomment and add sw.js to activate:
-      // navigator.serviceWorker.register('/sw.js');
-    }
-
-    /* ==================================================
        INIT
        ================================================== */
+    // Set up import file handler
+    const importFileInput = document.getElementById('import-file-input');
+    if (importFileInput) {
+      importFileInput.addEventListener('change', importData);
+    }
+
     seedDefaultData();
     renderHome();
     setupFAB('home');
